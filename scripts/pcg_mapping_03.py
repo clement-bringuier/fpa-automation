@@ -193,7 +193,7 @@ if __name__ == "__main__":
         get_soldes_bilan
     )
 
-    INPUT_FOLDER  = "data/input"
+    INPUT_FOLDER  = "data/fec"
     MAPPING_FOLDER = "mapping"
 
     # Chargement FEC

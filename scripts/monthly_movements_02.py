@@ -141,7 +141,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from scripts.load_fec_01 import load_fec_entites, detect_periode
 
-    INPUT_FOLDER = "data/input"
+    INPUT_FOLDER = "data/fec"
 
     # Détection automatique de la période
     PERIODE = detect_periode(INPUT_FOLDER)

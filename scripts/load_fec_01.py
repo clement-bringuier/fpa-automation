@@ -158,7 +158,7 @@ def load_fec_entites(input_folder, periode):
 # Test du script
 if __name__ == "__main__":
 
-    INPUT_FOLDER = "data/input"
+    INPUT_FOLDER = "data/fec"
 
     # Détection automatique de la période
     PERIODE = detect_periode(INPUT_FOLDER)

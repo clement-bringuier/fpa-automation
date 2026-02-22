@@ -266,7 +266,7 @@ if __name__ == "__main__":
         agreger_bilan
     )
 
-    INPUT_FOLDER   = "data/input"
+    INPUT_FOLDER   = "data/fec"
     MAPPING_FOLDER = "mapping"
 
     # Chargement FEC

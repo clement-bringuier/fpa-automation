@@ -40,7 +40,9 @@ fpa-automation/
 │   │                     # Format : FEC_YYYYMM_ENTITE.txt
 │   ├── rh/               # Fichiers Silae + mapping RH (non versionnés)
 │   │                     # Format : silae_YYYYMM_ENTITE.xlsx
-│   └── revenue_cogs/     # Fichiers split CA/COGS par BU (non versionnés)
+│   ├── revenue_cogs/     # Fichiers split CA/COGS par BU (non versionnés)
+│   └── capex/            # Fichier CAPEX décaissés (non versionné)
+│                         # Format : capex_decaisses.xlsx (Periode | Montant_decaisse)
 ├── mapping/              # Fichiers de mapping (non versionnés)
 │   ├── mapping_pcg.xlsx  # Mapping PCG par entité (onglets FR/PID/CELSIUS/VERTICAL)
 │   └── interco.xlsx      # Configuration des éliminations intercos
@@ -50,8 +52,8 @@ fpa-automation/
 │   ├── pcg_mapping_03.py        # Application du mapping PCG
 │   ├── interco_04.py            # Éliminations intercompagnies
 │   ├── bu_split_05.py           # Split CA/COGS/masse salariale par BU
-│   ├── capex_07.py              # CAPEX cash milestones et CAPEX RH
-│   └── output_09.py             # Génération des reportings Excel
+│   ├── capex_06.py              # CAPEX cash milestones
+│   └── output_07.py             # Génération des reportings Excel (à venir)
 ├── main.py
 └── requirements.txt
 ```
@@ -60,10 +62,12 @@ fpa-automation/
 1. Placer les FEC dans `data/fec/` au format `FEC_YYYYMM_ENTITE.txt`
 2. Placer les fichiers Silae dans `data/rh/` au format `silae_YYYYMM_ENTITE.xlsx`
 3. Mettre à jour `data/revenue_cogs/split_ca_cogs.xlsx` avec les données du mois
-4. Lancer `python main.py`
-5. Récupérer le reporting dans `data/output/`
+4. Mettre à jour `data/capex/capex_decaisses.xlsx` avec le décaissé du mois
+5. Lancer `python main.py`
+6. Récupérer le reporting dans `data/output/`
 
 ## Notes
 - Les écarts FAE/FNP intercos sont documentés dans `mapping/interco.xlsx` (colonne Commentaire)
 - Le mapping RH (`data/rh/mapping_rh.xlsx`) doit être maintenu à jour pour les nouveaux salariés
 - La détection de période est automatique (prend le FEC le plus récent dans `data/fec/`)
+- Le fichier `capex_decaisses.xlsx` est cumulatif : ajouter une ligne par mois

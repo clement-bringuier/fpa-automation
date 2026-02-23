@@ -12,6 +12,7 @@ Ordre d'exécution :
   08 — Génération des reportings Excel
 """
 
+from config                     import FOLDERS
 from scripts.load_fec_01        import load_fec_entites, detect_periode
 from scripts.monthly_movements_02 import (
     get_mouvements_mois,
@@ -40,22 +41,11 @@ from scripts.ifrs16_07          import run as run_ifrs16
 from scripts.output_08          import run as run_output
 
 
-# ── Chemins ───────────────────────────────────────────────────────────────────
-
-INPUT_FOLDER        = "data/fec"
-MAPPING_FOLDER      = "mapping"
-RH_FOLDER           = "data/rh"
-REVENUE_COGS_FOLDER = "data/revenue_cogs"
-OUTPUT_FOLDER       = "data/output"
-
-
-# ── Pipeline ──────────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
 
     # 01 — Chargement FEC
-    periode = detect_periode(INPUT_FOLDER)
-    df      = load_fec_entites(INPUT_FOLDER, periode)
+    periode = detect_periode(FOLDERS["fec"])
+    df      = load_fec_entites(FOLDERS["fec"], periode)
 
     # 02 — Mouvements & soldes
     df_mois    = get_mouvements_mois(df, periode)
@@ -63,20 +53,20 @@ if __name__ == "__main__":
     df_bilan   = get_soldes_bilan(df, periode)
 
     # 03 — Mapping PCG
-    mappings              = load_mapping_pcg(MAPPING_FOLDER)
+    mappings              = load_mapping_pcg(FOLDERS["mapping"])
     df_mapped, df_alertes = appliquer_mapping(df_comptes, mappings)
     df_bilan_mapped       = agreger_bilan(df_bilan, mappings)
 
     # 04 — Éliminations intercos
-    df_interco_pl, df_interco_bs    = load_interco(MAPPING_FOLDER)
+    df_interco_pl, df_interco_bs    = load_interco(FOLDERS["mapping"])
     df_pl_elimine, recap_pl         = eliminer_intercos_pl(df_mois, df_mapped, df_interco_pl)
     df_bilan_elimine, recap_bs      = eliminer_intercos_bs(df, df_bilan, df_interco_bs)
     df_pl_final                     = agreger_pl(df_pl_elimine)
 
     # 05 — Split BU
-    df_split      = load_split_ca_cogs(REVENUE_COGS_FOLDER, periode)
-    df_silae      = load_silae(RH_FOLDER, periode)
-    df_mapping_rh = load_mapping_rh(RH_FOLDER)
+    df_split      = load_split_ca_cogs(FOLDERS["revenue_cogs"], periode)
+    df_silae      = load_silae(FOLDERS["rh"], periode)
+    df_mapping_rh = load_mapping_rh(FOLDERS["rh"])
     df_opex_rh, df_capex_rh = split_masse_salariale(df_silae, df_mapping_rh)
 
     # 06 — CAPEX cash milestones
@@ -94,5 +84,5 @@ if __name__ == "__main__":
         recap_bs        = recap_bs,
         ifrs16          = ifrs16,
         periode         = periode,
-        output_folder   = OUTPUT_FOLDER,
+        output_folder   = FOLDERS["output"],
     )

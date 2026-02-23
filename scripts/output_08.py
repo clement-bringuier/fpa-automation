@@ -22,131 +22,29 @@ Inputs :
   - output_folder     : chemin de sortie
 """
 
-import pandas as pd
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from openpyxl import Workbook
-from openpyxl.styles import (
-    PatternFill, Font, Alignment, Border, Side, numbers
-)
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from pathlib import Path
 
+from config import (
+    C_HEADER, C_SECTION, C_SUBTOTAL, C_TOTAL, C_ROW_ALT, C_WHITE, C_WARN,
+    NORMALISATION, PL_STRUCTURE, REPORTING_GROUPS, IFRS16_ENTITIES,
+)
 
-# ── Couleurs & styles ─────────────────────────────────────────────────────────
 
-C_HEADER      = "1F2D3D"   # Bleu nuit — header colonnes
-C_SECTION     = "2E4057"   # Bleu foncé — sections (Revenue, EBITDA…)
-C_SUBTOTAL    = "4A90D9"   # Bleu moyen — sous-totaux (Gross Profit, CM…)
-C_TOTAL       = "1ABC9C"   # Vert — totaux (EBIT, Net Income)
-C_ROW_ALT     = "F5F7FA"   # Gris clair — lignes alternées
-C_WHITE       = "FFFFFF"
-C_WARN        = "E74C3C"   # Rouge — écarts intercos
+# ── Styles (objets openpyxl) ──────────────────────────────────────────────────
 
 THIN = Side(style="thin", color="CCCCCC")
 BORDER_THIN = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 
-# ── Mapping normalisation Mapping_PL → ligne P&L normalisée ──────────────────
+# ── Sous-totaux calculés ──────────────────────────────────────────────────────
 
-NORMALISATION = {
-    # Revenus
-    "SALES"                                          : "Sales",
-    "B2C Revenue"                                    : "B2C Revenue",
-    "B2B Revenue"                                    : "B2B Revenue",
-    # COGS
-    "COGS"                                           : "COGS",
-    # Staff operating / non-operating géré via df_opex_rh (Type)
-    # Marketing & variable
-    "Marketing costs"                                : "Marketing costs",
-    "Freelance"                                      : "Freelance",
-    "Server"                                         : "Servers & softwares",
-    "Softwares"                                      : "Servers & softwares",
-    "Video / Image /Consulting  Providers"           : "Freelance",
-    "Business provider fees"                         : "Freelance",
-    # Structure costs
-    "Accounting & audit fees"                        : "Structure costs",
-    "Accounting, Audit, Legal Fees & Other fees"     : "Structure costs",
-    "Legal fees"                                     : "Structure costs",
-    "Management fees"                                : "Structure costs",
-    "Insurance"                                      : "Structure costs",
-    "Insurances"                                     : "Structure costs",
-    "Internet & telecom"                             : "Structure costs",
-    "Postal charges"                                 : "Structure costs",
-    "Banking fees"                                   : "Structure costs",
-    "Pro. Asso. Subscription"                        : "Structure costs",
-    "Furnitures"                                     : "Structure costs",
-    "Furniture"                                      : "Structure costs",
-    "Miscellaneous"                                  : "Structure costs",
-    "Other costs"                                    : "Structure costs",
-    "Other Fees"                                     : "Structure costs",
-    "Other fees"                                     : "Structure costs",
-    "Press & software subscriptions"                 : "Structure costs",
-    "China Office"                                   : "Structure costs",
-    "Maintenance & repairs + miscellaneous"          : "Structure costs",
-    "D&A on FX risk"                                 : "Structure costs",
-    "risks and liabilities"                          : "Structure costs",
-    "Doubtful accounts"                              : "Structure costs",
-    # Accommodation costs
-    "Accomodation & transport"                       : "Accommodation costs",
-    "Accomodations & Transport"                      : "Accommodation costs",
-    "Reception"                                      : "Accommodation costs",
-    "Receptions costs"                               : "Accommodation costs",
-    "Exhibition & Events fees"                       : "Accommodation costs",
-    "Internal events"                                : "Accommodation costs",
-    # Rents (neutralisé IFRS 16)
-    "Rent"                                           : "Rents & charges",
-    "Rents & other charges"                          : "Rents & charges",
-    # Profit-sharing
-    "Profit-sharing"                                 : "Profit-sharing",
-    # D&A
-    "D&A on fixed assets"                            : "D&A on fixed assets",
-    "D&A - Milestones"                               : "D&A - Milestones",
-    "D&A on deferred charges"                        : "D&A on fixed assets",
-    # Financial
-    "Financial income (loss)"                        : "Financial income (loss)",
-    # Tax
-    "Tax"                                            : "Tax",
-    # Extraordinary
-    "Extraordinary income (loss)"                    : "Extraordinary items",
-    "extraordinary income (loss)"                    : "Extraordinary items",
-    "Extraordinary Income /  (loss)"                 : "Extraordinary items",
-    # Ignorés dans le P&L (passent via bu_split ou intercos)
-    "Personnel costs to be allocated"                : "_SKIP",
-    "Other personnel costs (training,learning tax, ...)": "Structure costs",
-}
-
-# Ordre et type de chaque ligne P&L
-PL_STRUCTURE = [
-    # (ligne, type)  type: 'item' | 'subtotal' | 'total' | 'section' | 'spacer'
-    ("REVENUE",                  "section"),
-    ("Sales",                    "item"),
-    ("B2C Revenue",              "item"),
-    ("B2B Revenue",              "item"),
-    ("GROSS PROFIT",             "subtotal"),
-    ("COGS",                     "item"),
-    ("",                         "spacer"),
-    ("Staff costs (Operating)",  "item"),
-    ("Marketing costs",          "item"),
-    ("Freelance",                "item"),
-    ("Servers & softwares",      "item"),
-    ("CONTRIBUTION MARGIN",      "subtotal"),
-    ("Staff costs (Non-op.)",    "item"),
-    ("Structure costs",          "item"),
-    ("Accommodation costs",      "item"),
-    ("Profit-sharing",           "item"),
-    ("Rents & charges",          "item"),
-    ("EBITDA",                   "total"),
-    ("D&A on fixed assets",      "item"),
-    ("D&A - Milestones",         "item"),
-    ("D&A ROU (IFRS 16)",        "item"),
-    ("EBIT",                     "total"),
-    ("Financial income (loss)",  "item"),
-    ("EBT",                      "subtotal"),
-    ("Tax",                      "item"),
-    ("NET INCOME",               "total"),
-    ("Extraordinary items",      "item"),
-]
-
-# Sous-totaux calculés
 SUBTOTALS = {
     "GROSS PROFIT"       : lambda d: d.get("Sales", 0) + d.get("B2C Revenue", 0) + d.get("B2B Revenue", 0) - d.get("COGS", 0),
     "CONTRIBUTION MARGIN": lambda d: (
@@ -225,12 +123,10 @@ def _build_pl_dict(entities, df_pl_final, df_opex_rh, ifrs16):
     # IFRS 16 — neutralisation loyers + ROU D&A
     rou_total = 0
     for e in entities:
-        if e == "PID":
-            d["Rents & charges"] = d.get("Rents & charges", 0) - ifrs16["loyers_pid"]
-            rou_total += ifrs16["rou_pid"]
-        if e == "CELSIUS":
-            d["Rents & charges"] = d.get("Rents & charges", 0) - ifrs16["loyers_celsius"]
-            rou_total += ifrs16["rou_celsius"]
+        if e in IFRS16_ENTITIES:
+            key = e.lower()
+            d["Rents & charges"] = d.get("Rents & charges", 0) - ifrs16[f"loyers_{key}"]
+            rou_total += ifrs16[f"rou_{key}"]
     d["D&A ROU (IFRS 16)"] = rou_total
 
     # Calcul des sous-totaux
@@ -405,14 +301,8 @@ def run(
     wb = Workbook()
     wb.remove(wb.active)  # Supprime la feuille vide par défaut
 
-    # ── Groupes d'entités ─────────────────────────────────────────────────────
-    groups = {
-        "PID & FR"           : ["PID", "FR"],
-        "CELSIUS & VERTICAL" : ["CELSIUS", "VERTICAL"],
-        "Consolidé"          : ["FR", "PID", "CELSIUS", "VERTICAL"],
-    }
-
-    for sheet_name, entities in groups.items():
+    # ── Onglets P&L ───────────────────────────────────────────────────────────
+    for sheet_name, entities in REPORTING_GROUPS.items():
         ws = wb.create_sheet(sheet_name)
 
         # Colonnes = une par entité + total groupe

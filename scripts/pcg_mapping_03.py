@@ -15,15 +15,15 @@ def load_mapping_pcg(mapping_folder):
     for entite in ENTITES:
         try:
             df = pd.read_excel(filepath, sheet_name=entite, dtype=str)
-            df.columns = ['CompteNum', 'CompteLib', 'Mapping_PL', 'Mapping_BS']
-
-            df['CompteNum']  = df['CompteNum'].str.strip()
-            df['Mapping_PL'] = df['Mapping_PL'].str.strip()
-            df['Mapping_BS'] = df['Mapping_BS'].str.strip()
+            df.columns = ['CompteNum', 'CompteLib', 'Mapping_PL_detail', 'Mapping_BS_detail',
+                          'Mapping_PL_category', 'Mapping_BS_category']
 
             na_upper = [v.upper() for v in NA_VALUES]
-            df['Mapping_PL'] = df['Mapping_PL'].where(~df['Mapping_PL'].str.upper().isin(na_upper), other=None)
-            df['Mapping_BS'] = df['Mapping_BS'].where(~df['Mapping_BS'].str.upper().isin(na_upper), other=None)
+            for col in ['CompteNum', 'Mapping_PL_detail', 'Mapping_BS_detail',
+                        'Mapping_PL_category', 'Mapping_BS_category']:
+                df[col] = df[col].str.strip()
+                if col != 'CompteNum':
+                    df[col] = df[col].where(~df[col].str.upper().isin(na_upper), other=None)
 
             mappings[entite] = df
             print(f"  {entite} : {len(df)} comptes chargés")
@@ -44,11 +44,12 @@ def appliquer_mapping(df_comptes, mappings):
             continue
 
         df_merged = df_entite.merge(
-            df_mapping[['CompteNum', 'Mapping_PL', 'Mapping_BS']],
+            df_mapping[['CompteNum', 'Mapping_PL_detail', 'Mapping_BS_detail',
+                        'Mapping_PL_category', 'Mapping_BS_category']],
             on='CompteNum', how='left'
         )
 
-        non_mappes = df_merged[df_merged['Mapping_PL'].isna() & df_merged['Mapping_BS'].isna()]
+        non_mappes = df_merged[df_merged['Mapping_PL_detail'].isna() & df_merged['Mapping_BS_detail'].isna()]
         if not non_mappes.empty:
             non_mappes = non_mappes.copy()
             non_mappes['Entite'] = entite
@@ -70,17 +71,17 @@ def appliquer_mapping(df_comptes, mappings):
 def agreger_pl(df_mapped):
     df_pl = df_mapped[
         df_mapped['ClasseCompte'].isin(CLASSES_PL) &
-        df_mapped['Mapping_PL'].notna()
+        df_mapped['Mapping_PL_detail'].notna()
     ].copy()
 
-    pl = df_pl.groupby(['Entite', 'Mapping_PL'], as_index=False).agg(
+    pl = df_pl.groupby(['Entite', 'Mapping_PL_category', 'Mapping_PL_detail'], as_index=False).agg(
         Mouvement=('Mouvement', 'sum')
     )
 
     # Produits (classe 7) créditeurs en compta → on inverse pour affichage P&L
     pl['Mouvement'] = pl['Mouvement'] * -1
 
-    print(f"\nP&L agrégé : {pl['Mapping_PL'].nunique()} lignes distinctes")
+    print(f"\nP&L agrégé : {pl['Mapping_PL_detail'].nunique()} lignes de détail distinctes")
     return pl
 
 
@@ -92,17 +93,18 @@ def agreger_bilan(df_soldes_bilan, mappings):
         if df_entite.empty:
             continue
         df_merged = df_entite.merge(
-            df_mapping[['CompteNum', 'Mapping_BS']], on='CompteNum', how='left'
+            df_mapping[['CompteNum', 'Mapping_BS_category', 'Mapping_BS_detail']],
+            on='CompteNum', how='left'
         )
         dfs.append(df_merged)
 
     df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-    bilan = df_all[df_all['Mapping_BS'].notna()].groupby(
-        ['Entite', 'Mapping_BS'], as_index=False
+    bilan = df_all[df_all['Mapping_BS_detail'].notna()].groupby(
+        ['Entite', 'Mapping_BS_category', 'Mapping_BS_detail'], as_index=False
     ).agg(Solde=('Solde', 'sum'))
 
-    print(f"Bilan agrégé : {bilan['Mapping_BS'].nunique()} lignes distinctes")
+    print(f"Bilan agrégé : {bilan['Mapping_BS_detail'].nunique()} lignes de détail distinctes")
     return bilan
 
 

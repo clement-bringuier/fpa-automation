@@ -60,75 +60,8 @@ C_ROW_ALT  = "F5F7FA"   # Gris clair — lignes alternées
 C_WHITE    = "FFFFFF"
 C_WARN     = "E74C3C"   # Rouge — écarts intercos
 
-# ── P&L Normalisation (output_08) ─────────────────────────────────────────────
-
-NORMALISATION = {
-    # Revenus
-    "SALES"                                          : "Sales",
-    "B2C Revenue"                                    : "B2C Revenue",
-    "B2B Revenue"                                    : "B2B Revenue",
-    # COGS
-    "COGS"                                           : "COGS",
-    # Marketing & variable
-    "Marketing costs"                                : "Marketing costs",
-    "Freelance"                                      : "Freelance",
-    "Server"                                         : "Servers & softwares",
-    "Softwares"                                      : "Servers & softwares",
-    "Video / Image /Consulting  Providers"           : "Freelance",
-    "Business provider fees"                         : "Freelance",
-    # Structure costs
-    "Accounting & audit fees"                        : "Structure costs",
-    "Accounting, Audit, Legal Fees & Other fees"     : "Structure costs",
-    "Legal fees"                                     : "Structure costs",
-    "Management fees"                                : "Structure costs",
-    "Insurance"                                      : "Structure costs",
-    "Insurances"                                     : "Structure costs",
-    "Internet & telecom"                             : "Structure costs",
-    "Postal charges"                                 : "Structure costs",
-    "Banking fees"                                   : "Structure costs",
-    "Pro. Asso. Subscription"                        : "Structure costs",
-    "Furnitures"                                     : "Structure costs",
-    "Furniture"                                      : "Structure costs",
-    "Miscellaneous"                                  : "Structure costs",
-    "Other costs"                                    : "Structure costs",
-    "Other Fees"                                     : "Structure costs",
-    "Other fees"                                     : "Structure costs",
-    "Press & software subscriptions"                 : "Structure costs",
-    "China Office"                                   : "Structure costs",
-    "Maintenance & repairs + miscellaneous"          : "Structure costs",
-    "D&A on FX risk"                                 : "Structure costs",
-    "risks and liabilities"                          : "Structure costs",
-    "Doubtful accounts"                              : "Structure costs",
-    # Accommodation costs
-    "Accomodation & transport"                       : "Accommodation costs",
-    "Accomodations & Transport"                      : "Accommodation costs",
-    "Reception"                                      : "Accommodation costs",
-    "Receptions costs"                               : "Accommodation costs",
-    "Exhibition & Events fees"                       : "Accommodation costs",
-    "Internal events"                                : "Accommodation costs",
-    # Rents (neutralisé IFRS 16)
-    "Rent"                                           : "Rents & charges",
-    "Rents & other charges"                          : "Rents & charges",
-    # Profit-sharing
-    "Profit-sharing"                                 : "Profit-sharing",
-    # D&A
-    "D&A on fixed assets"                            : "D&A on fixed assets",
-    "D&A - Milestones"                               : "D&A - Milestones",
-    "D&A on deferred charges"                        : "D&A on fixed assets",
-    # Financial
-    "Financial income (loss)"                        : "Financial income (loss)",
-    # Tax
-    "Tax"                                            : "Tax",
-    # Extraordinary
-    "Extraordinary income (loss)"                    : "Extraordinary items",
-    "extraordinary income (loss)"                    : "Extraordinary items",
-    "Extraordinary Income /  (loss)"                 : "Extraordinary items",
-    # Ignorés dans le P&L (passent via bu_split ou intercos)
-    "Personnel costs to be allocated"                : "_SKIP",
-    "Other personnel costs (training,learning tax, ...)": "Structure costs",
-}
-
 # ── Structure P&L (output_08) ─────────────────────────────────────────────────
+# Les valeurs "item" correspondent aux Mapping_PL_category du mapping_pcg.xlsx.
 
 PL_STRUCTURE = [
     # (ligne, type)  type: 'item' | 'subtotal' | 'total' | 'section' | 'spacer'

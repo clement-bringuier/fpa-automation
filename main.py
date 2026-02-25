@@ -66,7 +66,7 @@ if __name__ == "__main__":
     # 05 — Split BU
     df_split      = load_split_ca_cogs(FOLDERS["revenue_cogs"], periode)
     df_silae      = load_silae(FOLDERS["rh"], periode)
-    df_mapping_rh = load_mapping_rh(FOLDERS["rh"])
+    df_mapping_rh = load_mapping_rh(FOLDERS["mapping"])
     df_opex_rh, df_capex_rh = split_masse_salariale(df_silae, df_mapping_rh)
 
     # 06 — CAPEX cash milestones
@@ -78,6 +78,7 @@ if __name__ == "__main__":
     # 08 — Output Excel
     run_output(
         df_pl_final     = df_pl_final,
+        df_pl_elimine   = df_pl_elimine,
         df_bilan_mapped = df_bilan_mapped,
         df_opex_rh      = df_opex_rh,
         recap_pl        = recap_pl,

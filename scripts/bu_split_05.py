@@ -56,8 +56,8 @@ def load_silae(rh_folder, periode):
     return df_silae
 
 
-def load_mapping_rh(rh_folder):
-    filepath = os.path.join(rh_folder, 'mapping_rh.xlsx')
+def load_mapping_rh(mapping_folder):
+    filepath = os.path.join(mapping_folder, 'mapping_rh.xlsx')
     df = pd.read_excel(filepath, header=0)
     df['Matricule'] = df['Matricule'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
     print(f"\nMapping RH chargé : {len(df)} salariés")
@@ -186,7 +186,7 @@ if __name__ == "__main__":
 
     df_split      = load_split_ca_cogs(FOLDERS["revenue_cogs"], periode)
     df_silae      = load_silae(FOLDERS["rh"], periode)
-    df_mapping_rh = load_mapping_rh(FOLDERS["rh"])
+    df_mapping_rh = load_mapping_rh(FOLDERS["mapping"])
     df_opex_rh, df_capex_rh = split_masse_salariale(df_silae, df_mapping_rh)
 
     df_ca_pid     = split_ca_cogs(df_pl_final, df_split[df_split['Entite'] == 'PID'].copy(), 'CA')

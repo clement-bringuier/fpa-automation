@@ -33,7 +33,7 @@ from pathlib import Path
 
 from config import (
     C_HEADER, C_SECTION, C_SUBTOTAL, C_TOTAL, C_ROW_ALT, C_WHITE, C_WARN,
-    NORMALISATION, PL_STRUCTURE, REPORTING_GROUPS, IFRS16_ENTITIES,
+    PL_STRUCTURE, REPORTING_GROUPS, IFRS16_ENTITIES,
 )
 
 
@@ -46,25 +46,27 @@ BORDER_THIN = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 # ── Sous-totaux calculés ──────────────────────────────────────────────────────
 
 SUBTOTALS = {
-    "GROSS PROFIT"       : lambda d: d.get("Sales", 0) + d.get("B2C Revenue", 0) + d.get("B2B Revenue", 0) - d.get("COGS", 0),
+    # Convention : charges stockées en négatif (agreger_pl applique * -1 sur classe 6 et 7)
+    # → tous les items se somment directement, sans soustraction explicite
+    "GROSS PROFIT"       : lambda d: d.get("Sales", 0) + d.get("B2C Revenue", 0) + d.get("B2B Revenue", 0) + d.get("COGS", 0),
     "CONTRIBUTION MARGIN": lambda d: (
         d.get("GROSS PROFIT", 0)
-        - d.get("Staff costs (Operating)", 0)
-        - d.get("Marketing costs", 0)
-        - d.get("Freelance", 0)
-        - d.get("Servers & softwares", 0)
+        + d.get("Staff costs (Operating)", 0)
+        + d.get("Marketing costs", 0)
+        + d.get("Freelance", 0)
+        + d.get("Servers & softwares", 0)
     ),
     "EBITDA"             : lambda d: (
         d.get("CONTRIBUTION MARGIN", 0)
-        - d.get("Staff costs (Non-op.)", 0)
-        - d.get("Structure costs", 0)
-        - d.get("Accommodation costs", 0)
-        - d.get("Profit-sharing", 0)
-        - d.get("Rents & charges", 0)
+        + d.get("Staff costs (Non-op.)", 0)
+        + d.get("Structure costs", 0)
+        + d.get("Accommodation costs", 0)
+        + d.get("Profit-sharing", 0)
+        + d.get("Rents & charges", 0)
     ),
-    "EBIT"               : lambda d: d.get("EBITDA", 0) - d.get("D&A on fixed assets", 0) - d.get("D&A - Milestones", 0) - d.get("D&A ROU (IFRS 16)", 0),
+    "EBIT"               : lambda d: d.get("EBITDA", 0) + d.get("D&A on fixed assets", 0) + d.get("D&A - Milestones", 0) + d.get("D&A ROU (IFRS 16)", 0),
     "EBT"                : lambda d: d.get("EBIT", 0) + d.get("Financial income (loss)", 0),
-    "NET INCOME"         : lambda d: d.get("EBT", 0) - d.get("Tax", 0),
+    "NET INCOME"         : lambda d: d.get("EBT", 0) + d.get("Tax", 0),
 }
 
 
@@ -91,6 +93,12 @@ def _style_cell(cell, row_type, col_idx, alt=False):
         cell.font = _font(bold=True, color=C_WHITE)
     elif row_type == "spacer":
         cell.fill = _fill(C_WHITE)
+    elif row_type == "item":
+        cell.fill = _fill(C_ROW_ALT if alt else C_WHITE)
+        cell.font = _font(bold=True)
+    elif row_type == "detail":
+        cell.fill = _fill(C_ROW_ALT if alt else C_WHITE)
+        cell.font = _font(bold=False, size=9)
     else:
         cell.fill = _fill(C_ROW_ALT if alt else C_WHITE)
         cell.font = _font()
@@ -102,45 +110,58 @@ def _style_cell(cell, row_type, col_idx, alt=False):
 # ── Construction du dict de valeurs P&L pour un groupe d'entités ─────────────
 
 def _build_pl_dict(entities, df_pl_final, df_opex_rh, ifrs16):
-    """Retourne un dict {ligne_normalisée: montant} pour un groupe d'entités."""
-    d = {}
+    """
+    Retourne (d_flat, d_detail) pour un groupe d'entités.
+      d_flat   : {category: montant_total}  — utilisé pour les sous-totaux
+      d_detail : {category: {detail: montant}}  — utilisé pour le rendu à 2 niveaux
+    """
+    d_flat   = {}
+    d_detail = {}
 
     # P&L standard (hors staff et rents)
     df = df_pl_final[df_pl_final["Entite"].isin(entities)].copy()
-    df["Ligne"] = df["Mapping_PL"].map(NORMALISATION)
-    df = df[df["Ligne"].notna() & (df["Ligne"] != "_SKIP")]
-    for ligne, grp in df.groupby("Ligne"):
-        d[ligne] = d.get(ligne, 0) + grp["Mouvement"].sum()
+
+    for category, cat_grp in df.groupby("Mapping_PL_category"):
+        d_flat[category] = d_flat.get(category, 0) + cat_grp["Mouvement"].sum()
+        if category not in d_detail:
+            d_detail[category] = {}
+        for detail, det_grp in cat_grp.groupby("Mapping_PL_detail"):
+            d_detail[category][detail] = (
+                d_detail[category].get(detail, 0) + det_grp["Mouvement"].sum()
+            )
 
     # Staff costs Operating / Non-operating
     if not df_opex_rh.empty:
         rh = df_opex_rh[df_opex_rh["Entite"].isin(entities)]
         op    = rh[rh["Type"].str.lower().str.contains("operat") & ~rh["Type"].str.lower().str.contains("non")]["Mouvement"].sum()
         nonop = rh[rh["Type"].str.lower().str.contains("non")]["Mouvement"].sum()
-        d["Staff costs (Operating)"]  = op
-        d["Staff costs (Non-op.)"]    = nonop
+        d_flat["Staff costs (Operating)"]  = -op    # négatif : convention charges négatives
+        d_flat["Staff costs (Non-op.)"]    = -nonop
 
     # IFRS 16 — neutralisation loyers + ROU D&A
+    # Rents & charges est négatif (FEC classe 6 après * -1) ; loyers > 0 → on additionne pour annuler
     rou_total = 0
     for e in entities:
         if e in IFRS16_ENTITIES:
             key = e.lower()
-            d["Rents & charges"] = d.get("Rents & charges", 0) - ifrs16[f"loyers_{key}"]
+            d_flat["Rents & charges"] = d_flat.get("Rents & charges", 0) + ifrs16[f"loyers_{key}"]
             rou_total += ifrs16[f"rou_{key}"]
-    d["D&A ROU (IFRS 16)"] = rou_total
+    d_flat["D&A ROU (IFRS 16)"] = -rou_total  # charge D&A → négatif
 
     # Calcul des sous-totaux
     for ligne, fn in SUBTOTALS.items():
-        d[ligne] = fn(d)
+        d_flat[ligne] = fn(d_flat)
 
-    return d
+    return d_flat, d_detail
 
 
 # ── Écriture d'un onglet P&L ──────────────────────────────────────────────────
 
 def _write_pl_sheet(ws, title, col_groups, periode):
     """
-    col_groups : liste de (label_colonne, dict_valeurs)
+    col_groups : liste de (label_colonne, d_flat, d_detail)
+      d_flat   : {category: montant_total}
+      d_detail : {category: {detail: montant}}
     """
     # Titre
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=1 + len(col_groups))
@@ -152,7 +173,7 @@ def _write_pl_sheet(ws, title, col_groups, periode):
 
     # Headers colonnes
     ws.cell(2, 1, "").fill = _fill(C_HEADER)
-    for ci, (lbl, _) in enumerate(col_groups, start=2):
+    for ci, (lbl, _, _) in enumerate(col_groups, start=2):
         c = ws.cell(2, ci, lbl)
         c.fill = _fill(C_HEADER)
         c.font = _font(bold=True, color=C_WHITE)
@@ -160,25 +181,52 @@ def _write_pl_sheet(ws, title, col_groups, periode):
         c.border = BORDER_THIN
     ws.row_dimensions[2].height = 18
 
-    # Lignes P&L
-    alt = False
-    for ri, (ligne, row_type) in enumerate(PL_STRUCTURE, start=3):
-        ws.row_dimensions[ri].height = 16 if row_type != "spacer" else 6
-        label_cell = ws.cell(ri, 1, ligne if row_type != "spacer" else "")
+    # Lignes P&L (row dynamique pour absorber les lignes de détail)
+    row = 3
+    alt  = False
+
+    for ligne, row_type in PL_STRUCTURE:
+        ws.row_dimensions[row].height = 16 if row_type != "spacer" else 6
+        label_cell = ws.cell(row, 1, ligne if row_type != "spacer" else "")
         _style_cell(label_cell, row_type, 1, alt)
 
-        for ci, (_, d) in enumerate(col_groups, start=2):
-            val = d.get(ligne, 0) if row_type not in ("section", "spacer") else ""
-            c = ws.cell(ri, ci, val if val != 0 or row_type in ("subtotal", "total") else "")
+        for ci, (_, d_flat, _) in enumerate(col_groups, start=2):
+            val = d_flat.get(ligne, 0) if row_type not in ("section", "spacer") else ""
+            c = ws.cell(row, ci, val if val != 0 or row_type in ("subtotal", "total") else "")
             _style_cell(c, row_type, ci, alt)
+
+        row += 1
 
         if row_type == "item":
             alt = not alt
+
+            # Détail : sous-lignes de la catégorie
+            all_details = []
+            seen = set()
+            for _, _, d_detail in col_groups:
+                for det in d_detail.get(ligne, {}):
+                    if det not in seen:
+                        all_details.append(det)
+                        seen.add(det)
+
+            for detail in all_details:
+                ws.row_dimensions[row].height = 14
+                lc = ws.cell(row, 1, f"   {detail}")
+                _style_cell(lc, "detail", 1, alt)
+
+                for ci, (_, _, d_detail) in enumerate(col_groups, start=2):
+                    val = d_detail.get(ligne, {}).get(detail, 0)
+                    c = ws.cell(row, ci, val if val != 0 else "")
+                    _style_cell(c, "detail", ci, alt)
+
+                row += 1
+                alt = not alt
+
         else:
             alt = False
 
     # Largeurs colonnes
-    ws.column_dimensions["A"].width = 30
+    ws.column_dimensions["A"].width = 35
     for ci in range(2, 2 + len(col_groups)):
         ws.column_dimensions[get_column_letter(ci)].width = 16
 
@@ -191,7 +239,7 @@ def _write_bilan_sheet(ws, df_bilan_mapped, periode):
 
     # Pivot
     pivot = df_bilan_mapped.pivot_table(
-        index="Mapping_BS", columns="Entite", values="Solde", aggfunc="sum"
+        index="Mapping_BS_detail", columns="Entite", values="Solde", aggfunc="sum"
     ).reindex(columns=entites).fillna(0)
     pivot["CONSOLIDÉ"] = pivot.sum(axis=1)
     pivot = pivot.reset_index()
@@ -285,10 +333,84 @@ def _write_retraitements_sheet(ws, recap_pl, recap_bs, ifrs16, periode):
         ws.column_dimensions[get_column_letter(ci)].width = 16
 
 
+# ── Onglet Détail P&L FEC ─────────────────────────────────────────────────────
+
+def _write_pl_detail_sheet(ws, df_pl_elimine, periode):
+    """Comptes FEC individuels avec leur mapping P&L, groupés par (Entité, Mapping_PL_detail)."""
+    df = df_pl_elimine[
+        df_pl_elimine["ClasseCompte"].isin(["6", "7"]) &
+        df_pl_elimine["Mapping_PL_detail"].notna()
+    ].copy()
+
+    # Convention P&L : même inversion que agreger_pl
+    df["Mouvement_PL"] = df["Mouvement"] * -1
+    df = df.sort_values(["Entite", "Mapping_PL_detail", "CompteNum"]).reset_index(drop=True)
+
+    NB_COLS = 5  # Entité | N° Compte | Libellé | Mapping P&L | Mouvement
+
+    # Titre
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=NB_COLS)
+    tc = ws.cell(1, 1, f"Détail P&L FEC — {periode[:4]}/{periode[4:]}")
+    tc.font = _font(bold=True, size=12, color=C_WHITE)
+    tc.fill = _fill(C_HEADER)
+    tc.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 22
+
+    # Headers
+    for ci, h in enumerate(["Entité", "N° Compte", "Libellé Compte", "Mapping P&L", "Mouvement"], 1):
+        c = ws.cell(2, ci, h)
+        c.fill = _fill(C_HEADER)
+        c.font = _font(bold=True, color=C_WHITE)
+        c.alignment = Alignment(horizontal="right" if ci == NB_COLS else "left")
+        c.border = BORDER_THIN
+    ws.row_dimensions[2].height = 18
+
+    row = 3
+    for (entite, mapping), grp in df.groupby(["Entite", "Mapping_PL_detail"], sort=True):
+        # Ligne section : label + sous-total
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=NB_COLS - 1)
+        ch = ws.cell(row, 1, f"{entite}  ·  {mapping}")
+        ch.fill = _fill(C_SECTION)
+        ch.font = _font(bold=True, color=C_WHITE)
+        ch.alignment = Alignment(horizontal="left", vertical="center")
+        ch.border = BORDER_THIN
+        cs = ws.cell(row, NB_COLS, grp["Mouvement_PL"].sum())
+        cs.fill = _fill(C_SECTION)
+        cs.font = _font(bold=True, color=C_WHITE)
+        cs.number_format = '#,##0;[Red]-#,##0'
+        cs.alignment = Alignment(horizontal="right")
+        cs.border = BORDER_THIN
+        ws.row_dimensions[row].height = 16
+        row += 1
+
+        # Lignes comptes
+        for i, (_, r) in enumerate(grp.iterrows()):
+            alt = i % 2 == 0
+            for ci, val in enumerate([r["Entite"], r["CompteNum"], r["CompteLib"], r["Mapping_PL_detail"], r["Mouvement_PL"]], 1):
+                c = ws.cell(row, ci, val)
+                c.fill = _fill(C_ROW_ALT if alt else C_WHITE)
+                c.font = _font()
+                c.border = BORDER_THIN
+                if ci == NB_COLS:
+                    c.number_format = '#,##0;[Red]-#,##0'
+                    c.alignment = Alignment(horizontal="right")
+                else:
+                    c.alignment = Alignment(horizontal="left")
+            ws.row_dimensions[row].height = 15
+            row += 1
+
+    ws.column_dimensions["A"].width = 12
+    ws.column_dimensions["B"].width = 14
+    ws.column_dimensions["C"].width = 42
+    ws.column_dimensions["D"].width = 30
+    ws.column_dimensions["E"].width = 16
+
+
 # ── Point d'entrée principal ──────────────────────────────────────────────────
 
 def run(
     df_pl_final,
+    df_pl_elimine,
     df_bilan_mapped,
     df_opex_rh,
     recap_pl,
@@ -308,11 +430,11 @@ def run(
         # Colonnes = une par entité + total groupe
         col_groups = []
         for e in entities:
-            d = _build_pl_dict([e], df_pl_final, df_opex_rh, ifrs16)
-            col_groups.append((e, d))
+            d_flat, d_detail = _build_pl_dict([e], df_pl_final, df_opex_rh, ifrs16)
+            col_groups.append((e, d_flat, d_detail))
 
-        d_total = _build_pl_dict(entities, df_pl_final, df_opex_rh, ifrs16)
-        col_groups.append(("TOTAL", d_total))
+        d_flat_total, d_detail_total = _build_pl_dict(entities, df_pl_final, df_opex_rh, ifrs16)
+        col_groups.append(("TOTAL", d_flat_total, d_detail_total))
 
         _write_pl_sheet(ws, sheet_name, col_groups, periode)
         print(f"[output_08] Onglet '{sheet_name}' généré")
@@ -326,6 +448,11 @@ def run(
     ws_ret = wb.create_sheet("Retraitements")
     _write_retraitements_sheet(ws_ret, recap_pl, recap_bs, ifrs16, periode)
     print("[output_08] Onglet 'Retraitements' généré")
+
+    # ── Détail P&L FEC ────────────────────────────────────────────────────────
+    ws_detail = wb.create_sheet("Détail P&L FEC")
+    _write_pl_detail_sheet(ws_detail, df_pl_elimine, periode)
+    print("[output_08] Onglet 'Détail P&L FEC' généré")
 
     # ── Sauvegarde ────────────────────────────────────────────────────────────
     filename = f"reporting_{periode}.xlsx"
